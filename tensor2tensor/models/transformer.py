@@ -1235,6 +1235,7 @@ def transformer_encoder(encoder_input,
               afn_extra=hparams.afn_extra,
               afn_dot=hparams.afn_dot,
               afn_multi=hparams.afn_multi,
+              bias_start=hparams.bias_start,
               bi_direction=hparams.bi_direction,
           )
           x = common_layers.layer_postprocess(x, y, hparams)
@@ -1551,6 +1552,7 @@ def transformer_base_v1():
   hparams.add_hparam("afn_extra", "none")
   hparams.add_hparam("afn_dot", "exp")
   hparams.add_hparam("afn_multi", "exp")
+  hparams.add_hparam("bias_start", 0.)
   hparams.add_hparam("bi_direction", False)
   return hparams
 

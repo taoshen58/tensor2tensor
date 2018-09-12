@@ -21,6 +21,7 @@ def dot_product_attention_mtsa(
         afn_extra='none',
         afn_dot='exp',
         afn_multi='exp',
+        bias_start=0.,
         bi_direction=False,
 ):
   """Dot-product attention.
@@ -81,9 +82,10 @@ def dot_product_attention_mtsa(
       e_dot_logits *= mul_mask
 
     # source2token self-attention
-    multi_logits = multi_head_dense_layer(k if use_k_mtsa else v, dim_v, True, 0., 'multi_logits1')
+    multi_logits = multi_head_dense_layer(
+      k if use_k_mtsa else v, dim_v, True, bias_start if afn_extra is None else 0., 'multi_logits1')
     if afn_extra is not None:  # use one extra layer for multi-dim
-      multi_logits = multi_head_dense_layer(afn_extra(multi_logits), dim_v, True, 5., 'multi_logits2')
+      multi_logits = multi_head_dense_layer(afn_extra(multi_logits), dim_v, True, bias_start, 'multi_logits2')
     e_multi_logits = afn_multi(multi_logits) # bs,hd,vl,vd
     if inp_mask_1d is not None:  # use mask for exp_logits
       e_multi_logits *= inp_mask_1d
