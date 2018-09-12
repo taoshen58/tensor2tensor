@@ -128,12 +128,18 @@ def afn_name2fn(afn_name):
     return tf.identity
   elif afn_name=='relu':
     return tf.nn.relu
+  elif afn_name == 'elu':
+    return tf.nn.elu
+  elif afn_name=='leaky_relu':
+    return tf.nn.leaky_relu
   elif afn_name=='exp':
     return tf.exp
   elif afn_name=='sigmoid':
     return tf.sigmoid
   elif afn_name=='tanh':
     return tf.tanh
+  elif afn_name=='ones':  # for debug
+    return lambda inp: tf.ones_like(inp)
   else:
     raise AttributeError
 
