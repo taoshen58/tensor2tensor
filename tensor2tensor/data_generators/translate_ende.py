@@ -31,9 +31,9 @@ import tensorflow as tf
 
 _ENDE_TRAIN_DATASETS = [
     [
-        "http://data.statmt.org/wmt18/translation-task/training-parallel-nc-v13.tgz",  # pylint: disable=line-too-long
-        ("training-parallel-nc-v13/news-commentary-v13.de-en.en",
-         "training-parallel-nc-v13/news-commentary-v13.de-en.de")
+        "http://www.statmt.org/wmt14/training-parallel-nc-v9.tgz",  # pylint: disable=line-too-long
+        ("training/news-commentary-v9.de-en.en",
+         "training/news-commentary-v9.de-en.de")
     ],
     [
         "http://www.statmt.org/wmt13/training-parallel-commoncrawl.tgz",

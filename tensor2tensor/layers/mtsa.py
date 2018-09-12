@@ -1,14 +1,140 @@
 import tensorflow as tf
 
 
-"""
-  hparams.add_hparam("encoder_self_attention_type", "none")
+from tensor2tensor.layers import common_layers, common_attention
+from tensor2tensor.utils import expert_utils
+import math
 
-              attention_type=hparams.self_attention_type if hparams.encoder_self_attention_type.lower()=='none' else hparams.encoder_self_attention_type,
 
-    elif attention_type == "mtsa_test":
-      x = dot_product_attention_global(q, k, v, bias, dropout_rate, image_shapes)
-"""
+def dot_product_attention_mtsa(
+        q,
+        k,
+        v,
+        bias,
+        dropout_rate=0.0,
+        image_shapes=None,
+        name=None,
+        make_image_summary=True,
+        save_weights_to=None,
+        dropout_broadcast_dims=None,
+        use_k_mtsa=True,
+        afn_extra='none',
+        afn_dot='exp',
+        afn_multi='exp',
+        bi_direction=False,
+):
+  """Dot-product attention.
+
+  Args:
+    q: Tensor with shape [..., length_q, depth_k].
+    k: Tensor with shape [..., length_kv, depth_k]. Leading dimensions must
+      match with q.
+    v: Tensor with shape [..., length_kv, depth_v] Leading dimensions must
+      match with q.
+    bias: bias Tensor (see attention_bias())
+    dropout_rate: a float.
+    image_shapes: optional tuple of integer scalars.
+      see comments for attention_image_summary()
+    name: an optional string
+    make_image_summary: True if you want an image summary.
+    save_weights_to: an optional dictionary to capture attention weights
+      for visualization; the weights tensor will be appended there under
+      a string key created from the variable scope (including name).
+    dropout_broadcast_dims: an optional list of integers less than rank of q.
+      Specifies in which dimensions to broadcast the dropout decisions.
+
+  Returns:
+    Tensor with shape [..., length_q, depth_v].
+  """
+  print("!!!!!dot_product_attention_mtsa!!!!!")
+  with tf.variable_scope(
+      name, default_name="dot_product_attention", values=[q, k, v]) as scope:
+    # get dim
+    dim_q = q.get_shape().as_list()[-1]
+    dim_k = k.get_shape().as_list()[-1]
+    dim_v = v.get_shape().as_list()[-1]
+    # prepare
+    afn_extra, afn_dot, afn_multi= afn_name2fn(afn_extra), afn_name2fn(afn_dot), afn_name2fn(afn_multi)
+    if bias is not None:
+      inp_mask_1d = tf.to_float(tf.equal(bias, 0.))  # bs,1,1,vl
+      inp_mask_1d = tf.transpose(inp_mask_1d, [0, 1, 3, 2])   # bs,1,vl,1
+    else:
+      inp_mask_1d = None
+
+    # token2token self attention
+    dot_logits = tf.matmul(q, k, transpose_b=True)
+    if bias is not None:
+      bias = common_layers.cast_like(bias, dot_logits)
+      dot_logits += bias
+    e_dot_logits = afn_dot(dot_logits)  # bs,hd,ql,vl
+    if bi_direction:
+      head_num = v.get_shape().as_list()[1]
+      ql, vl = tf.shape(q)[-2], tf.shape(v)[-2]
+      assert head_num is not None
+      assert head_num % 2 == 0
+      ones_mat = tf.ones([ql, vl], tf.float32)
+      mul_mask_fw = tf.matrix_band_part(ones_mat, -1, 0) #  Lower triangular part.
+      mul_mask_bw = tf.matrix_band_part(ones_mat, 0, -1) #  Upper triangular part.
+      mul_mask_fw_tile = tf.tile(tf.expand_dims(mul_mask_fw, 0), [head_num//2, 1, 1])
+      mul_mask_bw_tile = tf.tile(tf.expand_dims(mul_mask_bw, 0), [head_num//2, 1, 1])
+      mul_mask = tf.expand_dims(tf.concat([mul_mask_fw_tile, mul_mask_bw_tile], axis=0), axis=0)
+      e_dot_logits *= mul_mask
+
+    # source2token self-attention
+    multi_logits = multi_head_dense_layer(k if use_k_mtsa else v, dim_v, True, 0., 'multi_logits1')
+    if afn_extra is not None:  # use one extra layer for multi-dim
+      multi_logits = multi_head_dense_layer(afn_extra(multi_logits), dim_v, True, 5., 'multi_logits2')
+    e_multi_logits = afn_multi(multi_logits) # bs,hd,vl,vd
+    if inp_mask_1d is not None:  # use mask for exp_logits
+      e_multi_logits *= inp_mask_1d
+
+    # mtsa
+    accum_z_deno = tf.matmul(e_dot_logits, e_multi_logits)  # bs,hd,ql,vd
+    accum_z_deno = tf.where(  # in case of NaN and Inf
+      tf.greater(accum_z_deno, tf.zeros_like(accum_z_deno)),
+      accum_z_deno,
+      tf.ones_like(accum_z_deno)
+    )
+
+    # attention dropout
+    e_dot_logits = common_layers.dropout_with_broadcast_dims(
+      e_dot_logits, math.sqrt(1. - dropout_rate), broadcast_dims=dropout_broadcast_dims)
+    e_multi_logits = common_layers.dropout_with_broadcast_dims(
+      e_multi_logits, math.sqrt(1. - dropout_rate), broadcast_dims=dropout_broadcast_dims)
+    rep_mul_score = v * e_multi_logits  # bs,hd,vl,vd
+    accum_rep_mul_score = tf.matmul(e_dot_logits, rep_mul_score)  # bs,hd,ql,vd
+    # calculate the final attention results
+    attn_res = accum_rep_mul_score / accum_z_deno
+    if inp_mask_1d is not None:  # use mask for output
+      attn_res *= inp_mask_1d
+
+    # ============ for vis =======
+    weights = e_dot_logits / (tf.reduce_sum(e_dot_logits, axis=-1, keepdims=True, name="attention_weights")+0.00001)
+    if save_weights_to is not None:
+      save_weights_to[scope.name] = weights
+      save_weights_to[scope.name + "/logits"] = dot_logits
+    if common_layers.should_generate_summaries() and make_image_summary:
+      common_attention.attention_image_summary(weights, image_shapes)
+    return attn_res
+
+
+# ================= Utils =======================
+def afn_name2fn(afn_name):
+  if afn_name=='none':
+    return None
+  elif afn_name=='linear':
+    return tf.identity
+  elif afn_name=='relu':
+    return tf.nn.relu
+  elif afn_name=='exp':
+    return tf.exp
+  elif afn_name=='sigmoid':
+    return tf.sigmoid
+  elif afn_name=='tanh':
+    return tf.tanh
+  else:
+    raise AttributeError
+
 
 def multi_head_dense_layer(
   input_tensor_trans, hn, bias, bias_start=0.0,
@@ -53,67 +179,3 @@ def multi_head_dense_layer(
     return tf.transpose(out, [1, 0, 2, 3])  # [bs,hd,sl,dim]
 
 
-def dot_product_attention_global(q,
-                          k,
-                          v,
-                          bias,
-                          dropout_rate=0.0,
-                          image_shapes=None,
-                          name=None,
-                          make_image_summary=True):
-  """dot-product attention.
-
-  Args:
-    q: a Tensor with shape [batch, heads, length_q, depth_k]
-    k: a Tensor with shape [batch, heads, length_kv, depth_k]
-    v: a Tensor with shape [batch, heads, length_kv, depth_v]
-    bias: bias Tensor (see attention_bias())
-    dropout_rate: a floating point number
-    image_shapes: optional tuple of integer scalars.
-      see comments for attention_image_summary()
-    name: an optional string
-    make_image_summary: True if you want an image summary.
-
-  Returns:
-    A Tensor.
-  """
-  with tf.variable_scope(
-      name, default_name="dot_product_attention", values=[q, k, v]):
-    # [batch, num_heads, query_length, memory_length]
-    dim_q = q.get_shape().as_list()[-1]
-    dim_k = k.get_shape().as_list()[-1]
-    dim_v = v.get_shape().as_list()[-1]
-    
-    # token2token self attention
-    dot_logits = tf.matmul(q, k, transpose_b=True)
-    if bias is not None:
-      dot_logits += bias
-    e_dot_logits = tf.exp(dot_logits)  # bs,hd,ql,vl
-
-    # source2token self-attention
-    multi_logits = multi_head_dense_layer(k, dim_v, True, 0., 'multi_logits1')
-    e_multi_logits = tf.exp(multi_logits)  # tf.nn.sigmoid(multi_logits)    # bs,hd,vl,vd
-
-    # mtsa
-    accum_z_deno = tf.matmul(e_dot_logits, e_multi_logits)  # bs,hd,ql,vd
-    accum_z_deno = tf.where(  # in case of NaN and Inf
-       tf.greater(accum_z_deno, tf.zeros_like(accum_z_deno)),
-       accum_z_deno,
-      tf.ones_like(accum_z_deno)
-    )
-    # attention dropout
-    e_dot_logits = tf.nn.dropout(e_dot_logits, math.sqrt(1.-dropout_rate))
-    e_multi_logits = tf.nn.dropout(e_multi_logits, math.sqrt(1-dropout_rate))
-    rep_mul_score = v * e_multi_logits  # bs,hd,vl,vd
-    accum_rep_mul_score = tf.matmul(e_dot_logits, rep_mul_score)  # bs,hd,ql,vd
-    # calculate the final attention results
-    attn_res = accum_rep_mul_score / accum_z_deno
-    
-    # for visualization
-    weights = e_multi_logits / tf.reduce_sum(e_multi_logits, axis=-1, keepdims=True, name="attention_weights")
-    if (not tf.get_variable_scope().reuse and
-        # Summaries don't work well within tf.while_loop()
-        "/while/" not in tf.contrib.framework.get_name_scope() and
-        make_image_summary):
-      attention_image_summary(weights, image_shapes)
-    return attn_res

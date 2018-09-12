@@ -3472,6 +3472,18 @@ def multihead_attention(query_antecedent,
                                 save_weights_to=save_weights_to,
                                 make_image_summary=make_image_summary,
                                 dropout_broadcast_dims=dropout_broadcast_dims)
+    elif attention_type == "mtsa":
+      from tensor2tensor.layers.mtsa import dot_product_attention_mtsa
+      x = dot_product_attention_mtsa(q, k, v, bias, dropout_rate, image_shapes,
+                                     save_weights_to=save_weights_to,
+                                     make_image_summary=make_image_summary,
+                                     dropout_broadcast_dims=dropout_broadcast_dims,
+                                     use_k_mtsa=kwargs['use_k_mtsa'],
+                                     afn_extra=kwargs['afn_extra'],
+                                     afn_dot=kwargs['afn_dot'],
+                                     afn_multi=kwargs['afn_multi'],
+                                     bi_direction=kwargs['bi_direction'],
+                                     )
     elif attention_type == "dot_product_relative":
       x = dot_product_attention_relative(
           q,

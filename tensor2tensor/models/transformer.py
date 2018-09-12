@@ -1221,7 +1221,7 @@ def transformer_encoder(encoder_input,
               hparams.hidden_size,
               hparams.num_heads,
               hparams.attention_dropout,
-              attention_type=hparams.self_attention_type,
+              attention_type=hparams.self_attention_type if hparams.encoder_self_attention_type.lower()=='none' else hparams.encoder_self_attention_type,
               max_relative_position=hparams.max_relative_position,
               heads_share_relative_embedding=(
                   hparams.heads_share_relative_embedding),
@@ -1230,7 +1230,13 @@ def transformer_encoder(encoder_input,
               make_image_summary=make_image_summary,
               dropout_broadcast_dims=attention_dropout_broadcast_dims,
               max_length=hparams.get("max_length"),
-              vars_3d=hparams.get("attention_variables_3d"))
+              vars_3d=hparams.get("attention_variables_3d"),
+              use_k_mtsa=hparams.use_k_mtsa,
+              afn_extra=hparams.afn_extra,
+              afn_dot=hparams.afn_dot,
+              afn_multi=hparams.afn_multi,
+              bi_direction=hparams.bi_direction,
+          )
           x = common_layers.layer_postprocess(x, y, hparams)
         with tf.variable_scope("ffn"):
           y = transformer_ffn_layer(
@@ -1539,6 +1545,13 @@ def transformer_base_v1():
   hparams.add_hparam("moe_overhead_eval", 2.0)
   hparams.moe_num_experts = 16
   hparams.moe_loss_coef = 1e-3
+  # tshen add
+  hparams.add_hparam("encoder_self_attention_type", "none")
+  hparams.add_hparam("use_k_mtsa", True)
+  hparams.add_hparam("afn_extra", "none")
+  hparams.add_hparam("afn_dot", "exp")
+  hparams.add_hparam("afn_multi", "exp")
+  hparams.add_hparam("bi_direction", False)
   return hparams
 
 
