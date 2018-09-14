@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 DATA_DIR=/home/tshen/t2t/nmt/data
 RUN_DIR=/home/tshen/t2t/nmt/$1
 

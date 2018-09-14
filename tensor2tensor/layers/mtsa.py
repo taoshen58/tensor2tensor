@@ -55,6 +55,7 @@ def dot_product_attention_mtsa(
     dim_k = k.get_shape().as_list()[-1]
     dim_v = v.get_shape().as_list()[-1]
     # prepare
+    multi_logits_scale_factor = 1./math.sqrt(dim_v) if afn_multi.startswith('scaled') else 1.
     afn_extra, afn_dot, afn_multi= afn_name2fn(afn_extra), afn_name2fn(afn_dot), afn_name2fn(afn_multi)
     if bias is not None:
       inp_mask_1d = tf.to_float(tf.equal(bias, 0.))  # bs,1,1,vl
@@ -86,7 +87,7 @@ def dot_product_attention_mtsa(
       k if use_k_mtsa else v, dim_v, True, bias_start if afn_extra is None else 0., 'multi_logits1')
     if afn_extra is not None:  # use one extra layer for multi-dim
       multi_logits = multi_head_dense_layer(afn_extra(multi_logits), dim_v, True, bias_start, 'multi_logits2')
-    e_multi_logits = afn_multi(multi_logits) # bs,hd,vl,vd
+    e_multi_logits = afn_multi(multi_logits * multi_logits_scale_factor) # bs,hd,vl,vd
     if inp_mask_1d is not None:  # use mask for exp_logits
       e_multi_logits *= inp_mask_1d
 
@@ -135,6 +136,10 @@ def afn_name2fn(afn_name):
   elif afn_name=='exp':
     return tf.exp
   elif afn_name=='sigmoid':
+    return tf.sigmoid
+  elif afn_name=='scaled_exp':
+    return tf.exp
+  elif afn_name=='scaled_sigmoid':
     return tf.sigmoid
   elif afn_name=='tanh':
     return tf.tanh
