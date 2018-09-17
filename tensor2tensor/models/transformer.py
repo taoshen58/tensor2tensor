@@ -1314,7 +1314,7 @@ def transformer_decoder(decoder_input,
               hparams.hidden_size,
               hparams.num_heads,
               hparams.attention_dropout,
-              attention_type=hparams.self_attention_type,
+              attention_type=hparams.self_attention_type if hparams.decoder_self_attention_type.lower()=='none' else hparams.decoder_self_attention_type,
               max_relative_position=hparams.max_relative_position,
               heads_share_relative_embedding=(
                   hparams.heads_share_relative_embedding),
@@ -1325,7 +1325,13 @@ def transformer_decoder(decoder_input,
               dropout_broadcast_dims=attention_dropout_broadcast_dims,
               max_length=hparams.get("max_length"),
               decode_loop_step=decode_loop_step,
-              vars_3d=hparams.get("attention_variables_3d"))
+              vars_3d=hparams.get("attention_variables_3d"),
+              use_k_mtsa=hparams.use_k_mtsa,
+              afn_extra=hparams.afn_extra,
+              afn_dot=hparams.afn_dot,
+              afn_multi=hparams.afn_multi,
+              bias_start=hparams.bias_start,
+          )
           x = common_layers.layer_postprocess(x, y, hparams)
         if encoder_output is not None:
           with tf.variable_scope("encdec_attention"):
@@ -1338,6 +1344,7 @@ def transformer_decoder(decoder_input,
                 hparams.hidden_size,
                 hparams.num_heads,
                 hparams.attention_dropout,
+                attention_type=hparams.self_attention_type if hparams.decoder_encoder_attention_type.lower() == 'none' else hparams.decoder_encoder_attention_type,
                 max_relative_position=hparams.max_relative_position,
                 heads_share_relative_embedding=(
                     hparams.heads_share_relative_embedding),
@@ -1347,7 +1354,13 @@ def transformer_decoder(decoder_input,
                 make_image_summary=make_image_summary,
                 dropout_broadcast_dims=attention_dropout_broadcast_dims,
                 max_length=hparams.get("max_length"),
-                vars_3d=hparams.get("attention_variables_3d"))
+                vars_3d=hparams.get("attention_variables_3d"),
+                use_k_mtsa=hparams.use_k_mtsa,
+                afn_extra=hparams.afn_extra,
+                afn_dot=hparams.afn_dot,
+                afn_multi=hparams.afn_multi,
+                bias_start=hparams.bias_start,
+            )
             x = common_layers.layer_postprocess(x, y, hparams)
         with tf.variable_scope("ffn"):
           y = transformer_ffn_layer(
@@ -1548,6 +1561,8 @@ def transformer_base_v1():
   hparams.moe_loss_coef = 1e-3
   # tshen add
   hparams.add_hparam("encoder_self_attention_type", "none")
+  hparams.add_hparam("decoder_self_attention_type", "none")
+  hparams.add_hparam("decoder_encoder_attention_type", "none")
   hparams.add_hparam("use_k_mtsa", True)
   hparams.add_hparam("afn_extra", "none")
   hparams.add_hparam("afn_dot", "exp")

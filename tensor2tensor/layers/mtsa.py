@@ -57,16 +57,16 @@ def dot_product_attention_mtsa(
     # prepare
     multi_logits_scale_factor = 1./math.sqrt(dim_v) if afn_multi.startswith('scaled') else 1.
     afn_extra, afn_dot, afn_multi= afn_name2fn(afn_extra), afn_name2fn(afn_dot), afn_name2fn(afn_multi)
-    if bias is not None:
-      inp_mask_1d = tf.to_float(tf.equal(bias, 0.))  # bs,1,1,vl
-      inp_mask_1d = tf.transpose(inp_mask_1d, [0, 1, 3, 2])   # bs,1,vl,1
-    else:
-      inp_mask_1d = None
+    # if bias is not None:
+    #   inp_mask_1d = tf.to_float(tf.equal(bias, 0.))  # bs,1,1,vl
+    #   inp_mask_1d = tf.transpose(inp_mask_1d, [0, 1, 3, 2])   # bs,1,vl,1
+    # else:
+    #   inp_mask_1d = None
 
     # token2token self attention
-    dot_logits = tf.matmul(q, k, transpose_b=True)
+    dot_logits = tf.matmul(q, k, transpose_b=True)  # bs,hd,ql,vl
     if bias is not None:
-      bias = common_layers.cast_like(bias, dot_logits)
+      bias = common_layers.cast_like(bias, dot_logits)  # 1/bs,1,ql/1,vl
       dot_logits += bias
     e_dot_logits = afn_dot(dot_logits)  # bs,hd,ql,vl
     if bi_direction:
@@ -88,8 +88,8 @@ def dot_product_attention_mtsa(
     if afn_extra is not None:  # use one extra layer for multi-dim
       multi_logits = multi_head_dense_layer(afn_extra(multi_logits), dim_v, True, bias_start, 'multi_logits2')
     e_multi_logits = afn_multi(multi_logits * multi_logits_scale_factor) # bs,hd,vl,vd
-    if inp_mask_1d is not None:  # use mask for exp_logits
-      e_multi_logits *= inp_mask_1d
+    # if inp_mask_1d is not None:  # use mask for exp_logits
+    #   e_multi_logits *= inp_mask_1d
 
     # mtsa
     accum_z_deno = tf.matmul(e_dot_logits, e_multi_logits)  # bs,hd,ql,vd
@@ -108,8 +108,8 @@ def dot_product_attention_mtsa(
     accum_rep_mul_score = tf.matmul(e_dot_logits, rep_mul_score)  # bs,hd,ql,vd
     # calculate the final attention results
     attn_res = accum_rep_mul_score / accum_z_deno
-    if inp_mask_1d is not None:  # use mask for output
-      attn_res *= inp_mask_1d
+    # if inp_mask_1d is not None:  # use mask for output
+    #   attn_res *= inp_mask_1d
 
     # ============ for vis =======
     weights = e_dot_logits / (tf.reduce_sum(e_dot_logits, axis=-1, keepdims=True, name="attention_weights")+0.00001)

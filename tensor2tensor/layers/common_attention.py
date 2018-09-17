@@ -3483,7 +3483,7 @@ def multihead_attention(query_antecedent,
                                      afn_dot=kwargs['afn_dot'],
                                      afn_multi=kwargs['afn_multi'],
                                      bias_start=kwargs['bias_start'],
-                                     bi_direction=kwargs['bi_direction'],
+                                     bi_direction=kwargs['bi_direction'] if 'bi_direction' in kwargs else False,
                                      )
     elif attention_type == "dot_product_relative":
       x = dot_product_attention_relative(
