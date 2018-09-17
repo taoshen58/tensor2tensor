@@ -54,10 +54,21 @@ def main(_):
     shutil.copy2(os.path.join(model_dir, "flags.txt"),
                  os.path.join(output_dir, "flags.txt"))
 
+  # tao shen add: only keep last n ckpt for efficiency
+  model_num = sum([1 for _ in bleu_hook.stepfiles_iterator(model_dir, FLAGS.wait_minutes,
+                                                           FLAGS.min_steps)])
+  idx_model = 0
+
   models_processed = 0
   queue = deque()
   for model in bleu_hook.stepfiles_iterator(model_dir, FLAGS.wait_minutes,
                                             FLAGS.min_steps):
+    # tshen add
+    if idx_model < model_num - FLAGS.n:
+      idx_model += 1
+      continue
+
+
     if models_processed == 0:
       var_list = tf.contrib.framework.list_variables(model.filename)
       avg_values = {}
