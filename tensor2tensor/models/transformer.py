@@ -1563,10 +1563,10 @@ def transformer_base_v1():
   hparams.add_hparam("encoder_self_attention_type", "none")
   hparams.add_hparam("decoder_self_attention_type", "none")
   hparams.add_hparam("decoder_encoder_attention_type", "none")
-  hparams.add_hparam("use_k_mtsa", True)
+  hparams.add_hparam("use_k_mtsa", False)
   hparams.add_hparam("afn_extra", "none")
   hparams.add_hparam("afn_dot", "exp")
-  hparams.add_hparam("afn_multi", "exp")
+  hparams.add_hparam("afn_multi", "scaled_sigmoid")
   hparams.add_hparam("bias_start", 0.)
   hparams.add_hparam("bi_direction", False)
   return hparams

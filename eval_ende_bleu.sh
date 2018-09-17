@@ -7,7 +7,7 @@ CKPT_DIR=$RUN_DIR
 if [ $# -gt 1 ]; then
     if [ $2 -gt 1 ]; then
         CKPT_DIR=$RUN_DIR/averaged_ckpt
-        t2t-avg-all --model_dir $RUN_DIR -output_dir $CKPT_DIR --n $2 --wait_minutes 10
+        t2t-avg-all --model_dir $RUN_DIR -output_dir $CKPT_DIR --n $2
     fi
 fi
 
